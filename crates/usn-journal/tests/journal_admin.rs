@@ -20,14 +20,15 @@ fn open() -> Volume {
 fn disposable_volume_journal_can_be_created_resized_and_deleted() {
     let volume = open();
 
-    volume.create_journal(8 * MIB, MIB).unwrap();
+    // Larger than the 32 MiB that ReFS reported when asked for less.
+    volume.create_journal(64 * MIB, 8 * MIB).unwrap();
     let first = volume.journal_info().unwrap();
-    assert_eq!(first.maximum_size, 8 * MIB);
+    assert_eq!(first.maximum_size, 64 * MIB);
 
-    volume.create_journal(16 * MIB, 2 * MIB).unwrap();
+    volume.create_journal(128 * MIB, 16 * MIB).unwrap();
     let resized = volume.journal_info().unwrap();
     assert_eq!(resized.id, first.id, "resizing keeps the journal");
-    assert_eq!(resized.maximum_size, 16 * MIB);
+    assert_eq!(resized.maximum_size, 128 * MIB);
     let cursor = resized.end_cursor();
 
     volume.delete_journal().unwrap();
@@ -40,7 +41,7 @@ fn disposable_volume_journal_can_be_created_resized_and_deleted() {
     // same clock tick can get the same ID.
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    volume.create_journal(8 * MIB, MIB).unwrap();
+    volume.create_journal(64 * MIB, 8 * MIB).unwrap();
     let recreated = volume.journal_info().unwrap();
     assert_ne!(recreated.id, first.id, "a new journal has a new identity");
     assert!(matches!(

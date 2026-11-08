@@ -1,0 +1,4 @@
+# Link the C runtime statically on MSVC so binaries need no VC++ redistributable.
+# The GNU target already produces binaries that depend only on system DLLs.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

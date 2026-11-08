@@ -1,0 +1,17 @@
+[package]
+name = "usn-watch"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Read the Windows USN change journal from any language, as JSON Lines on stdout."
+readme = "README.md"
+keywords = ["usn", "ntfs", "journal", "windows", "cli"]
+categories = ["command-line-utilities", "filesystem"]
+
+[dependencies]
+usn-journal = { path = "../usn-journal", version = "0.1.0" }
+
+[dev-dependencies]
+serde_json = "1"

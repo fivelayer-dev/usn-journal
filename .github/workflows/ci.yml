@@ -1,0 +1,139 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build the documentation
+        run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  portable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+      - name: Test the portable logic
+        run: |
+          cargo test -p usn-journal --lib
+          cargo test -p usn-watch --bin usn-watch
+
+  minimum-rust:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@1.85
+
+      - name: Check against the declared minimum Rust version
+        run: cargo check --workspace --all-targets --all-features
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the tests
+        run: cargo test --workspace --all-features --no-run
+
+      - name: Make sure the test volume has a journal
+        run: |
+          $drive = Split-Path -Qualifier ([IO.Path]::GetTempPath())
+          fsutil usn createjournal m=33554432 a=4194304 $drive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "TEST_DRIVE=$drive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # The tests never create a shadow copy themselves, so running them elevated
+      # on a PC can't. See tests/shadow_copy.rs for what they expect.
+      - name: Take a shadow copy for the tests
+        run: |
+          $dir = "$env:TEST_DRIVE\usn-shadow-copy-test"
+          New-Item -ItemType Directory $dir | Out-Null
+          foreach ($name in 'kept', 'changed', 'deleted', 'renamed') {
+            Set-Content -Path "$dir\$name.txt" -Value 'before' -NoNewline
+          }
+          $output = vssadmin create shadow /for=$env:TEST_DRIVE | Out-String
+          $output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -notmatch '\\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy\d+') {
+            throw 'vssadmin did not report a shadow copy device'
+          }
+          "USN_TEST_SHADOW_COPY=$($Matches[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Set-Content -Path "$dir\changed.txt" -Value 'after' -NoNewline
+          Set-Content -Path "$dir\created.txt" -Value 'after' -NoNewline
+          Remove-Item "$dir\deleted.txt"
+          Rename-Item "$dir\renamed.txt" 'renamed-new.txt'
+
+      - name: Attach a disposable volume
+        run: |
+          .\scripts\attach-test-volume.ps1 -FileSystem NTFS -Letter T
+          "USN_TEST_DISPOSABLE_VOLUME=T:" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Hosted runners are already elevated, so every ignored test really runs.
+      - name: Run every test
+        run: cargo test --workspace --all-features --no-fail-fast -- --include-ignored --test-threads=4
+
+      - name: Remove the shadow copy
+        if: always()
+        run: |
+          vssadmin delete shadows /for=$env:TEST_DRIVE /all /quiet
+          exit 0
+
+  refs:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    # ReFS support hasn't been proven yet, so this reports without failing the build.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the tests
+        run: cargo test --workspace --all-features --tests --no-run
+
+      - name: Attach ReFS volumes
+        run: |
+          .\scripts\attach-test-volume.ps1 -FileSystem ReFS -Letter R
+          .\scripts\attach-test-volume.ps1 -FileSystem ReFS -Letter T
+          fsutil usn createjournal m=33554432 a=4194304 R:
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory R:\tmp | Out-Null
+
+      # ReFS can't list itself, so the tests that list a volume can't apply.
+      - name: Run the tests on ReFS
+        run: >-
+          cargo test --workspace --all-features --tests --no-fail-fast --
+          --include-ignored --test-threads=4
+          --skip shadow_copy --skip scan --skip the_master_file_table
+          --skip a_file_symlink_is_a_link_and_its_target_is_not
+        env:
+          TEMP: R:\tmp
+          TMP: R:\tmp
+          USN_TEST_DISPOSABLE_VOLUME: "T:"

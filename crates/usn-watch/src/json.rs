@@ -27,7 +27,7 @@ pub fn change_line(c: &FileChange) -> String {
     push_opt_path(&mut out, c.previous_path.as_deref());
     let _ = write!(
         out,
-        ",\"is_directory\":{},\"has_new_content\":{},\"is_reparse_point\":{},\"is_link\":{},\"reparse_tag\":{},\"still_open\":{},\"id\":\"{}\",\"parent_id\":\"{}\",\"first_usn\":{},\"last_usn\":{},\"timestamp_ms\":{},\"attributes\":{},\"reasons\":[",
+        ",\"is_directory\":{},\"has_new_content\":{},\"is_reparse_point\":{},\"is_link\":{},\"reparse_tag\":{},\"still_open\":{},\"id\":\"{}\",\"parent_id\":\"{}\",\"parent_ids\":[",
         c.is_directory(),
         c.has_new_content(),
         c.is_reparse_point(),
@@ -36,6 +36,16 @@ pub fn change_line(c: &FileChange) -> String {
         c.still_open,
         c.id,
         c.parent_id,
+    );
+    for (i, parent) in c.parent_ids.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let _ = write!(out, "\"{parent}\"");
+    }
+    let _ = write!(
+        out,
+        "],\"first_usn\":{},\"last_usn\":{},\"timestamp_ms\":{},\"attributes\":{},\"reasons\":[",
         c.first_usn,
         c.last_usn,
         opt_number(unix_ms(c.timestamp)),

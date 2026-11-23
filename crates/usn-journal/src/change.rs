@@ -56,6 +56,15 @@ pub struct FileChange {
     pub id: FileId,
     /// The directory holding it.
     pub parent_id: FileId,
+    /// Every directory that a merged record named as holding it, in the order
+    /// first seen, with [`FileChange::parent_id`] among them. A move adds the
+    /// directory it left and each one it passed through, and a hard link added
+    /// or removed adds the directory of that name. Each of them gained or lost
+    /// a name, or holds one whose file changed.
+    ///
+    /// These are not filtered and not looked up: one may be outside the filter,
+    /// or gone. `Volume::path_of` gives the path of one that is still there.
+    pub parent_ids: Vec<FileId>,
     /// Every reason seen across the merged records.
     pub reasons: Reason,
     /// Its attributes as of the latest record.

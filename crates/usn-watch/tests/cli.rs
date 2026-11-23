@@ -152,6 +152,8 @@ fn changes_reports_a_new_file_and_ends_with_a_checkpoint() {
     assert!(!created.is_empty(), "{parsed:#?}");
     assert_eq!(created[0]["path"], Value::Null, "names are removed");
     assert!(created[0]["id"].as_str().unwrap().starts_with("0x"));
+    let parents = created[0]["parent_ids"].as_array().unwrap();
+    assert!(parents.contains(&created[0]["parent_id"]), "{parents:?}");
     assert!(!created[0]["reasons"].as_array().unwrap().is_empty());
 }
 

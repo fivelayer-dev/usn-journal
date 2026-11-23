@@ -323,6 +323,7 @@ impl<S: Source> Engine<S> {
             still_open: s.still_open,
             id: s.id,
             parent_id: s.parent_id,
+            parent_ids: s.parent_ids,
             reasons: s.reasons,
             attributes: s.attributes,
             reparse_tag,
@@ -521,6 +522,32 @@ mod tests {
             Some(Path::new("C:\\old"))
         );
         assert!(b.changes.iter().all(|c| !c.has_new_content()));
+    }
+
+    #[test]
+    fn a_move_names_the_directory_it_left_and_the_one_it_joined() {
+        let mut j = FakeJournal::new();
+        add(&mut j, 30, ROOT, Reason::FILE_CREATE.0 | CLOSE, DIR, "from");
+        add(&mut j, 31, ROOT, Reason::FILE_CREATE.0 | CLOSE, DIR, "to");
+        add(&mut j, 20, 30, Reason::RENAME_OLD_NAME.0, 0, "f");
+        add(&mut j, 20, 31, Reason::RENAME_NEW_NAME.0 | CLOSE, 0, "f");
+        // A second name for it, in the root.
+        add(
+            &mut j,
+            20,
+            ROOT,
+            Reason::HARD_LINK_CHANGE.0 | CLOSE,
+            0,
+            "also",
+        );
+        let b = poll_settled(&mut stream(j));
+        let c = b.changes.iter().find(|c| c.id == FileId(20)).unwrap();
+        assert_eq!(c.parent_id, FileId(31));
+        assert_eq!(
+            c.parent_ids,
+            [FileId(30), FileId(31), FileId(u128::from(ROOT))]
+        );
+        assert_eq!(c.path.as_deref(), Some(Path::new("C:\\to\\f")));
     }
 
     #[test]

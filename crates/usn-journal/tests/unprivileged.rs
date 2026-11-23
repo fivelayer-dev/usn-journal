@@ -811,6 +811,64 @@ fn deleting_one_hard_link_does_not_report_the_file_as_deleted() {
     assert_ne!(c.kind, ChangeKind::Deleted, "{c:#?}");
 }
 
+/// Two directories in a temporary one.
+fn two_directories(dir: &TempDir) -> (PathBuf, PathBuf) {
+    let (here, there) = (dir.file("here"), dir.file("there"));
+    fs::create_dir(&here).unwrap();
+    fs::create_dir(&there).unwrap();
+    (here, there)
+}
+
+#[test]
+fn a_hard_link_added_elsewhere_names_the_directory_it_was_added_to() {
+    let dir = TempDir::new();
+    let (here, there) = two_directories(&dir);
+    let original = here.join("original.txt");
+    write_file(&original, b"data");
+    let id = id_of(&original);
+    let mut s = stream(open(), Start::Now);
+
+    fs::hard_link(&original, there.join("second.txt")).unwrap();
+
+    let c = wait_until(&mut s, id, |c| c.reasons.contains(Reason::HARD_LINK_CHANGE));
+    assert!(c.parent_ids.contains(&id_of(&there)), "{c:#?}");
+    assert!(c.parent_ids.contains(&c.parent_id), "{c:#?}");
+}
+
+#[test]
+fn a_hard_link_removed_elsewhere_names_the_directory_it_was_removed_from() {
+    let dir = TempDir::new();
+    let (here, there) = two_directories(&dir);
+    let original = here.join("original.txt");
+    write_file(&original, b"data");
+    let second = there.join("second.txt");
+    fs::hard_link(&original, &second).unwrap();
+    let id = id_of(&original);
+    let mut s = stream(open(), Start::Now);
+
+    fs::remove_file(&second).unwrap();
+
+    let c = wait_until(&mut s, id, |c| c.reasons.contains(Reason::HARD_LINK_CHANGE));
+    assert_ne!(c.kind, ChangeKind::Deleted, "{c:#?}");
+    assert!(c.parent_ids.contains(&id_of(&there)), "{c:#?}");
+}
+
+#[test]
+fn a_move_names_the_directory_it_left_and_the_one_it_joined() {
+    let dir = TempDir::new();
+    let (here, there) = two_directories(&dir);
+    let original = here.join("moved.txt");
+    write_file(&original, b"data");
+    let id = id_of(&original);
+    let mut s = stream(open(), Start::Now);
+
+    fs::rename(&original, there.join("moved.txt")).unwrap();
+
+    let c = wait_until(&mut s, id, |c| c.reasons.contains(Reason::RENAME_NEW_NAME));
+    assert_eq!(c.parent_id, id_of(&there), "{c:#?}");
+    assert_eq!(c.parent_ids, [id_of(&here), id_of(&there)], "{c:#?}");
+}
+
 #[test]
 fn the_public_types_can_be_shared_between_threads() {
     fn assert_send_sync<T: Send + Sync>() {}

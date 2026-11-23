@@ -66,6 +66,19 @@ fn handle(change: &FileChange) -> Result<()> {
 Return an error if reading fails for a reason other than the file being gone, so that
 the cursor isn't saved past it.
 
+### Which directories a change touched
+
+If you keep a record of each directory, such as a listing you refresh only when something
+in it changes, use `change.parent_ids`. It holds every directory that the change's
+records named: the one the file is in, the one it was moved out of and any it passed
+through on the way, and the directory of each hard link added to it or removed from it.
+`change.parent_id` is only the one it's in now, and `previous_path` only says where a
+move began when that could still be worked out.
+
+The directories are given by ID, not filtered, and not checked to still exist. Look up
+the path of one with `Volume::path_of`, which fails for one that has since been deleted.
+That directory's own delete is a change too, and names the directory it was in.
+
 ## Choosing how to read changes
 
 | | `ChangeStream` | `ChangeReader` |

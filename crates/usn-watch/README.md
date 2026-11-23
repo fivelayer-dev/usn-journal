@@ -40,9 +40,12 @@ A `change` line:
 {"v":1,"type":"change","kind":"modified","path":"C:\\docs\\a.txt","previous_path":null,
  "is_directory":false,"has_new_content":true,"is_reparse_point":false,"is_link":false,
  "reparse_tag":null,"still_open":false,"id":"0x1000000abcd","parent_id":"0x100000000ef",
- "first_usn":1024,"last_usn":1104,"timestamp_ms":1577836800000,"attributes":32,
- "reasons":["DATA_EXTEND","CLOSE"]}
+ "parent_ids":["0x100000000ef"],"first_usn":1024,"last_usn":1104,
+ "timestamp_ms":1577836800000,"attributes":32,"reasons":["DATA_EXTEND","CLOSE"]}
 ```
+
+`parent_ids` lists every directory the change touched: the one the file is in, any it was
+moved out of, and the directory of each hard link added or removed.
 
 `kind` is `created`, `modified`, `renamed`, `metadata_changed` or `deleted`, and the
 [guide](https://github.com/fivelayer-dev/usn-journal/blob/main/docs/tracking-changes.md)

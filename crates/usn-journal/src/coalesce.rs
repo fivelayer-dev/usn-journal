@@ -13,6 +13,9 @@ use crate::types::{FileAttributes, FileId, FileTime, Reason, Usn};
 pub(crate) struct Settled {
     pub id: FileId,
     pub parent_id: FileId,
+    /// Every directory a record in this window named as holding the file, in
+    /// the order first seen.
+    pub parent_ids: Vec<FileId>,
     pub name: OsString,
     pub reasons: Reason,
     pub attributes: FileAttributes,
@@ -64,6 +67,7 @@ impl Coalescer {
             settled: Settled {
                 id: record.id,
                 parent_id: record.parent_id,
+                parent_ids: Vec::new(),
                 name: record.name(),
                 reasons: Reason::default(),
                 attributes: record.attributes,
@@ -85,6 +89,12 @@ impl Coalescer {
             mid_rename: false,
         });
         let s = &mut entry.settled;
+        // A record names the directory of the name it was made through: the one
+        // a file was moved out of or into, or the one a hard link was added to
+        // or removed from. A file is seldom in more than a few.
+        if !s.parent_ids.contains(&record.parent_id) {
+            s.parent_ids.push(record.parent_id);
+        }
         s.reasons |= record.reason;
         s.attributes = record.attributes;
         s.last_usn = record.usn;
@@ -238,6 +248,57 @@ mod tests {
 
     fn push(c: &mut Coalescer, usn: i64, file: u64, reason: Reason, name: &str, now: Instant) {
         push_path(c, usn, file, reason, name, None, now);
+    }
+
+    fn push_in(c: &mut Coalescer, usn: i64, parent: u64, reason: Reason, name: &str, now: Instant) {
+        let b = buffer(0, &[v2(usn, 1, parent, reason.0, 0, name)]);
+        let rec = split_buffer(&b).unwrap().1.next().unwrap().unwrap();
+        c.push(&rec, None, now);
+    }
+
+    #[test]
+    fn keeps_every_directory_the_records_named() {
+        let mut c = coalescer();
+        let t = Instant::now();
+        // Written where it was, moved twice, and given a second name elsewhere.
+        push_in(&mut c, 10, 5, Reason::DATA_EXTEND, "f", t);
+        push_in(&mut c, 20, 5, Reason::RENAME_OLD_NAME, "f", t);
+        push_in(&mut c, 30, 6, Reason::RENAME_NEW_NAME, "f", t);
+        push_in(&mut c, 40, 6, Reason::RENAME_OLD_NAME, "f", t);
+        push_in(&mut c, 50, 7, Reason::RENAME_NEW_NAME, "f", t);
+        push_in(&mut c, 60, 8, Reason::HARD_LINK_CHANGE, "also", t);
+        push_in(
+            &mut c,
+            70,
+            8,
+            Reason::HARD_LINK_CHANGE | Reason::CLOSE,
+            "also",
+            t,
+        );
+        let out = c.drain_ready(t + SETTLE);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].parent_id, FileId(7));
+        assert_eq!(
+            out[0].parent_ids,
+            [FileId(5), FileId(6), FileId(7), FileId(8)]
+        );
+    }
+
+    #[test]
+    fn a_file_that_stayed_put_names_one_directory() {
+        let mut c = coalescer();
+        let t = Instant::now();
+        push(&mut c, 10, 1, Reason::DATA_OVERWRITE, "f", t);
+        push(
+            &mut c,
+            20,
+            1,
+            Reason::DATA_OVERWRITE | Reason::CLOSE,
+            "f",
+            t,
+        );
+        let out = c.drain_ready(t + SETTLE);
+        assert_eq!(out[0].parent_ids, [out[0].parent_id]);
     }
 
     #[test]

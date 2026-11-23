@@ -268,6 +268,8 @@ let filter = PathFilter::new()
   of an included folder is still noticed.
 - Excludes always win.
 - A moved-in directory gets one change, so list its contents yourself.
+- `PathFilter::is_excluded` applies the same rules to a path of your own, for when you list
+  a directory yourself and want it to match what a scan and the changes report.
 
 ## Links
 

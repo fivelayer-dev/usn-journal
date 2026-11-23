@@ -59,7 +59,22 @@ impl PathFilter {
 
     /// True if `path`, a full path under `root`, should not be reported. A path
     /// that is not under `root` is not excluded.
-    pub(crate) fn is_excluded(&self, root: &Path, path: &Path) -> bool {
+    ///
+    /// Use this to leave the same paths out of a listing you make yourself, such
+    /// as of one directory, as a scan and the changes leave out. `root` is the
+    /// volume's root as you reach it, which for a shadow copy is its device path.
+    ///
+    /// ```
+    /// use std::path::Path;
+    /// use usn_journal::PathFilter;
+    ///
+    /// let filter = PathFilter::new().exclude_system_files().exclude("Temp");
+    /// let root = Path::new("C:\\");
+    /// assert!(filter.is_excluded(root, Path::new("C:\\pagefile.sys")));
+    /// assert!(filter.is_excluded(root, Path::new("C:\\temp\\draft.txt")));
+    /// assert!(!filter.is_excluded(root, Path::new("C:\\Users\\me\\notes.txt")));
+    /// ```
+    pub fn is_excluded(&self, root: &Path, path: &Path) -> bool {
         if self.includes.is_empty() && self.excludes.is_empty() {
             return false;
         }
